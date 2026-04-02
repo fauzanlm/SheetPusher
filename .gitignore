@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv
+venv/
+ENV/
+
+# Streamlit
+.streamlit/
+db_config.json
+
+# Excel
+*.xlsx
+*.xls
+*.csv
+
+# OS
+.DS_Store
+Thumbs.db
