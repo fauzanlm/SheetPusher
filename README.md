@@ -13,11 +13,21 @@
 - **Append vs Replace**: Choose to overwrite existing tables or add data to them.
 - **Connection Profiles**: Save your database credentials locally for quick access.
 
-## 🛠️ Installation
+## 🌐 Cloud vs Local Execution
+
+| Feature | Streamlit Cloud | Local Execution (Recommended) |
+|---------|-----------------|-------------------------------|
+| **Database Access** | Cloud DBs only (AWS, Supabase, etc.) | **Local DBs (localhost)** & Cloud DBs |
+| **Privacy** | Data processed on Streamlit servers | Data stays on your machine |
+| **Setup** | No installation needed | Requires Python & Pip |
+
+> **⚠️ IMPORTANT:** If you want to connect to a database running on your own computer (**localhost**), you **must** run SheetPusher locally. The cloud version cannot "see" your local machine's network.
+
+## 🛠️ Installation (For Local Use)
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/SheetPusher.git
+   git clone https://github.com/fauzanlm/SheetPusher.git
    cd SheetPusher
    ```
 
