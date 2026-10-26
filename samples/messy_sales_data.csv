@@ -1,0 +1,11 @@
+"  Order ID # "," Customer Name  "," Order Date ","Product Category ","  Unit Price ($) ","Qty","Customer Email","Customer_Email","   ","Notes / Remarks"
+"ORD-1001","  Acme Corp  ","2024-01-15","Electronics","$1,200.00","2","billing@acme.com","billing@acme.com",,"Urgent delivery"
+"ORD-1002","Globex Inc","16/01/2024","Office Supplies","  45.50  ","10","orders@globex.org","orders@globex.org",,"  Net 30 terms  "
+"ORD-1003","  Soylent Corp ","Jan 17, 2024","Food & Beverage","$15.00","100",,,,
+,,,,,,,,,
+"ORD-1004","Initech LLC","2024.01.18","Software","$3,500.00","1","support@initech.com","billing@initech.com",,"Annual License"
+"ORD-1001","  Acme Corp  ","2024-01-15","Electronics","$1,200.00","2","billing@acme.com","billing@acme.com",,"Urgent delivery"
+"ORD-1005","   Stark Industries   ","2024-01-19"," Hardware ","$899.90","5","tony@stark.com","tony@stark.com",,
+,,,,,,,,,
+"ORD-1006","Wayne Enterprises","20-01-2024","Vehicles","$45,000.00","1","bruce@wayne.com","finance@wayne.com",,"Confidential order"
+"ORD-1007"," Cyberdyne Systems ","2024/01/21","AI & Robotics","$12,400.00","3","skynet@cyberdyne.io","info@cyberdyne.io",,"Priority handling"

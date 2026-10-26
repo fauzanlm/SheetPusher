@@ -1,20 +1,32 @@
 import streamlit as st
 import pandas as pd
-from sqlalchemy import create_engine, inspect
-import re
+from sqlalchemy import create_engine
 import os
 import json
+from cleaner import (
+    clean_column_name,
+    make_columns_unique,
+    clean_dataframe,
+    normalize_dataframe_headers
+)
 
 # Set Page Config
-st.set_page_config(page_title="Excel to DB ETL Tool", layout="wide")
+st.set_page_config(
+    page_title="SheetPusher - Excel & CSV to DB ETL Tool",
+    page_icon="🚀",
+    layout="wide"
+)
 
 CONFIG_FILE = "db_config.json"
 
 # Helper to load config
 def load_config():
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
     return {}
 
 # Helper to save config
@@ -25,41 +37,24 @@ def save_config(config_data):
 # Load existing config
 saved_config = load_config()
 
-# Helper function to clean column names (lowercase + underscore)
-def clean_column_name(column_name):
-    # Strip spaces, convert to lowercase, replace non-alphanumeric with underscore
-    clean_name = str(column_name).strip().lower()
-    clean_name = re.sub(r'[^a-z0-9]', '_', clean_name)
-    # Remove multiple underscores
-    clean_name = re.sub(r'_+', '_', clean_name)
-    return clean_name.strip('_')
-
-# Function to handle duplicate column names
-def make_columns_unique(columns):
-    seen = {}
-    new_cols = []
-    for col in columns:
-        base_name = clean_column_name(col)
-        if not base_name: # Handle empty headers
-            base_name = "unnamed_column"
-            
-        if base_name in seen:
-            seen[base_name] += 1
-            new_cols.append(f"{base_name}_duplicate{seen[base_name]}")
-        else:
-            seen[base_name] = 0
-            new_cols.append(base_name)
-    return new_cols
-
-st.title("🚀 Python Excel to Database ETL")
-st.markdown("Upload Excel, Convert Columns to Snake Case, and Push to Database.")
+st.title("🚀 SheetPusher: Excel & CSV to Database ETL")
+st.markdown(
+    "Automated data ingestion pipeline: upload raw spreadsheets, sanitize column headers into snake_case, "
+    "clean empty records/whitespace, and load directly into your SQL database."
+)
 
 # Sidebar: Database Configuration
 st.sidebar.header("🛠️ Database Configuration")
-db_type = st.sidebar.selectbox("Dialect", ["mariadb", "mysql", "postgresql", "sqlite", "mssql"], 
-                               index=["mariadb", "mysql", "postgresql", "sqlite", "mssql"].index(saved_config.get("db_type", "mariadb")))
+dialects = ["mariadb", "mysql", "postgresql", "sqlite", "mssql"]
+default_dialect = saved_config.get("db_type", "mariadb")
+dialect_index = dialects.index(default_dialect) if default_dialect in dialects else 0
+
+db_type = st.sidebar.selectbox("Dialect", dialects, index=dialect_index)
 db_host = st.sidebar.text_input("Host", value=saved_config.get("db_host", "localhost"))
-db_port = st.sidebar.text_input("Port", value=saved_config.get("db_port", "3306" if db_type in ["mysql", "mariadb"] else "5432"))
+db_port = st.sidebar.text_input(
+    "Port",
+    value=saved_config.get("db_port", "3306" if db_type in ["mysql", "mariadb"] else "5432")
+)
 db_user = st.sidebar.text_input("Username", value=saved_config.get("db_user", "root"))
 db_pass = st.sidebar.text_input("Password", type="password", value=saved_config.get("db_pass", ""))
 db_name = st.sidebar.text_input("Database Name", value=saved_config.get("db_name", "test_db"))
@@ -74,15 +69,13 @@ if st.sidebar.button("💾 Save Database Profile"):
         "db_name": db_name
     }
     save_config(config_to_save)
-    st.sidebar.success("Settings saved locally!")
+    st.sidebar.success("Database configuration saved locally!")
 
 # Connection String Builder
 def get_connection_url():
     if db_type == "sqlite":
         return f"sqlite:///{db_name}.db"
-    elif db_type == "mariadb":
-        return f"mysql+mysqlconnector://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-    elif db_type == "mysql":
+    elif db_type in ["mariadb", "mysql"]:
         return f"mysql+mysqlconnector://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
     elif db_type == "postgresql":
         return f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
@@ -90,30 +83,35 @@ def get_connection_url():
         return None
 
 # Main Area: File Upload
-uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx", "xls"])
+uploaded_file = st.file_uploader(
+    "Upload your spreadsheet file",
+    type=["xlsx", "xls", "csv"],
+    help="Supports modern Excel (.xlsx), legacy Excel (.xls), and comma-separated values (.csv)."
+)
 
 if uploaded_file:
-    # 1. Load Excel File to get Sheet Names
-    xl = pd.ExcelFile(uploaded_file)
-    sheet_names = xl.sheet_names
-    
-    st.subheader("📄 Excel Configuration")
-    selected_sheet = st.selectbox("Select Sheet to Process", sheet_names)
-    
-    # Load Data from Selected Sheet
-    df = pd.read_excel(uploaded_file, sheet_name=selected_sheet)
     original_filename = os.path.splitext(uploaded_file.name)[0]
-    
+    is_csv = uploaded_file.name.lower().endswith(".csv")
+
+    # 1. Load File Data
+    if is_csv:
+        df = pd.read_csv(uploaded_file)
+        selected_sheet = original_filename
+        st.info(f"📄 Processing CSV file: `{uploaded_file.name}` ({len(df)} raw rows)")
+    else:
+        xl = pd.ExcelFile(uploaded_file)
+        sheet_names = xl.sheet_names
+        st.subheader("📄 Sheet Selection")
+        selected_sheet = st.selectbox("Select Sheet to Process", sheet_names)
+        df = pd.read_excel(uploaded_file, sheet_name=selected_sheet)
+
     # --- DATA CLEANSING START ---
-    initial_rows = len(df)
-    df.dropna(how='all', inplace=True)
-    rows_after_dropna = len(df)
-    df.dropna(axis=1, how='all', inplace=True)
-    df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
-    df = df.where(pd.notnull(df), None)
+    df, stats = clean_dataframe(df)
     
-    if initial_rows > rows_after_dropna:
-        st.warning(f"🧹 Cleansing: Removed {initial_rows - rows_after_dropna} empty rows.")
+    if stats["empty_rows_dropped"] > 0:
+        st.warning(f"🧹 Cleansing: Removed {stats['empty_rows_dropped']} completely empty row(s).")
+    if stats["empty_cols_dropped"] > 0:
+        st.warning(f"🧹 Cleansing: Removed {stats['empty_cols_dropped']} completely empty column(s).")
     # --- DATA CLEANSING END ---
 
     # --- COLUMN SELECTION START ---
@@ -133,21 +131,23 @@ if uploaded_file:
     # --- COLUMN SELECTION END ---
 
     st.subheader("📋 Data Preview (Cleaned & Filtered)")
-    st.dataframe(df.head())
+    st.dataframe(df.head(10))
 
     # 2. Table & Mode Configuration
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("🏗️ Table Naming")
-        naming_option = st.radio("Choose Table Name:", ["Use File Name", "Use Sheet Name", "Custom Table Name"])
+        naming_option = st.radio("Choose Table Name Source:", ["Use File Name", "Use Sheet Name", "Custom Table Name"])
         if naming_option == "Use File Name":
             table_name = clean_column_name(original_filename)
         elif naming_option == "Use Sheet Name":
             table_name = clean_column_name(selected_sheet)
         else:
-            table_name = st.text_input("Enter Table Name", value=clean_column_name(selected_sheet))
-        st.info(f"DB Table: `{table_name}`")
+            custom_default = clean_column_name(selected_sheet) if selected_sheet else "imported_data"
+            table_name = st.text_input("Enter Table Name", value=custom_default)
+            table_name = clean_column_name(table_name)
+        st.info(f"Target SQL Table: `{table_name}`")
 
     with col2:
         st.subheader("📥 Insert Mode")
@@ -158,43 +158,41 @@ if uploaded_file:
         )
         sql_mode = "replace" if "Replace" in insert_mode else "append"
 
-    # 3. Transform Column Names (Handle Duplicates here)
-    new_column_names = make_columns_unique(df.columns)
-    df_transformed = df.copy()
-    df_transformed.columns = new_column_names
+    # 3. Transform Column Names (Handle Duplicates & Snake Case)
+    df_transformed = normalize_dataframe_headers(df)
     
-    st.subheader("✨ Transformed Data Preview (Snake Case & Unique Columns)")
-    st.dataframe(df_transformed.head())
+    st.subheader("✨ Transformed Schema Preview (Snake Case & Deduplicated Headers)")
+    st.dataframe(df_transformed.head(10))
     
     # 4. Run ETL
     if st.button("🔥 Run ETL (Push to Database)"):
-        with st.status("🚀 Processing ETL...", expanded=True) as status:
+        with st.status("🚀 Processing ETL Pipeline...", expanded=True) as status:
             try:
                 conn_url = get_connection_url()
                 if not conn_url:
-                    st.error("Invalid database configuration.")
+                    st.error(f"Dialect '{db_type}' is not currently configured for direct URI connection.")
                     status.update(label="❌ ETL Failed", state="error")
                 else:
-                    status.write("🔌 Connecting to Database...")
+                    status.write("🔌 Connecting to Database Engine...")
                     engine = create_engine(conn_url)
                     
                     with engine.connect() as conn:
-                        status.write("✅ Database Connected!")
+                        status.write("✅ Database Connected Successfully!")
                         status.write(f"📤 Pushing {len(df_transformed)} rows to table `{table_name}` using `{sql_mode}` mode...")
                         
-                        # Use chunksize for efficiency on large files
+                        # Chunked insertion for performance and stability
                         df_transformed.to_sql(table_name, con=engine, if_exists=sql_mode, index=False, chunksize=1000)
                         
                         status.update(label="🎊 ETL Successfully Completed!", state="complete", expanded=False)
                         st.balloons()
-                        st.success(f"Successfully uploaded data to table `{table_name}` ({sql_mode})!")
+                        st.success(f"Successfully loaded {len(df_transformed)} records into table `{table_name}` ({sql_mode})!")
                         
             except Exception as e:
-                st.error(f"❌ Error during ETL: {str(e)}")
+                st.error(f"❌ Error during ETL execution: {str(e)}")
                 status.update(label="❌ ETL Failed", state="error")
 
 else:
-    st.info("Please upload an Excel file to start.")
+    st.info("👋 Upload an Excel (.xlsx, .xls) or CSV file above to begin data cleansing and database ingestion.")
 
 st.markdown("---")
-st.caption("Built with ❤️ using Streamlit & Pandas")
+st.caption("SheetPusher • Lightweight Spreadsheet-to-Database ETL Pipeline • Built with Streamlit & Pandas")
