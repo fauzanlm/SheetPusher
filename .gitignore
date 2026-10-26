@@ -10,10 +10,13 @@ ENV/
 .streamlit/
 db_config.json
 
-# Excel
+# Excel & CSV (ignore root/user uploads, keep sample fixtures)
 *.xlsx
 *.xls
 *.csv
+!samples/*.xlsx
+!samples/*.xls
+!samples/*.csv
 
 # OS
 .DS_Store
